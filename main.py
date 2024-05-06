@@ -57,7 +57,10 @@ for directory in directories:
 
                 # Append the data to our data list for the current directory
                 data[directory].append(json_data)
-
+for key in data.keys():
+    print(key,end=' ')  # #'hlisa_traces', 'gremlins', 'za_proxy', 'survey_desktop'
+    print(len(data[key]))  #json data len
+breakpoint()
 # Initialize an empty dictionary to hold the pandas dataframes for each directory
 df_dict_init = {}
 
