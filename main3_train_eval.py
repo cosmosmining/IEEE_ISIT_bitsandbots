@@ -15,8 +15,8 @@ train_dataset = ISITDataset(df_dict_train,training_len=training_len*batch_size,m
 # eval_dataset = ISITDataset(df_dict_eval,max_sample_len=max_sample_len)
 train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 idx = 0
-
-net = NeuralNetwork()
+category = len(train_dataset.idx_2_name)  #5 #['hlisa_traces', 'gremlins', 'za_proxy', 'survey_desktop', 'random_mouse_with_sleep_bot']
+net = NeuralNetwork(max_len=max_sample_len,output_size=category)
 for batch in train_dataloader:
   print(f"{idx}/{training_len}")
   # for task A. Defense Task,  only the time_diff and position [x,y] elements recorded for each event can be used as input to classifier  

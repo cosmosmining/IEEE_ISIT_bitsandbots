@@ -4,15 +4,16 @@ from torch import nn
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 class NeuralNetwork(nn.Module):
-  def __init__(self):
+  def __init__(self,max_len,output_size):
     super().__init__()
+    self.max_len = max_len   #70*3 = 210
     self.flatten = nn.Flatten()
     self.linear_relu_stack = nn.Sequential(
-        nn.Linear(28*28, 512),
+        nn.Linear(max_len*3, 512),
         nn.ReLU(),
         nn.Linear(512, 512),
         nn.ReLU(),
-        nn.Linear(512, 10),
+        nn.Linear(512, output_size),
     )
 
   def forward(self, time_diff,pos_x,pos_y,terminate_idx):
@@ -29,8 +30,12 @@ class NeuralNetwork(nn.Module):
           continue
       print(time_diff[i,terminate_idx[i]:])
     '''
+    time_diff2 = time_diff.unsqueeze(-1)
+    pos_x2 = pos_x.unsqueeze(-1)
+    pos_y2 = pos_y.unsqueeze(-1)
+    xxx = tc.cat((time_diff2,pos_x2,pos_y2),dim=2)
+    xx = xxx.reshape(bs,-1)
     # print(time_diff[tc.arange(bs),terminate_idx-1])
+    logits = self.linear_relu_stack(xx)
     breakpoint()
-    x = self.flatten(pos_x)
-    logits = self.linear_relu_stack(x)
     return logits  #(bs,user_type)  user_type is 0,1,..4
