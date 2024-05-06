@@ -75,7 +75,7 @@ class ISITDataset(Dataset):
     time_diff = torch.tensor(sample['time_diff'], dtype=torch.float32)
     # eventName is categorical, performing one-hot encoding
     eventName_idx = self.event_names.index(sample['eventName'])
-    breakpoint()
+    # breakpoint()
     eventName = torch.zeros(len(self.event_names), dtype=torch.int32)
     eventName[eventName_idx] = 1
     # userType is categorical, performing one-hot encoding
@@ -83,6 +83,8 @@ class ISITDataset(Dataset):
                              sample['userType'] == 'gremlins',
                              sample['userType'] == 'za_proxy',
                              sample['userType'] == 'survey_desktop'], dtype=torch.int32)
+    
+    #        []      []       [] []  [32]        [4]
     return userId, time_diff, x, y, eventName, userType
   #           [x0,        x1, x2,x3, x4]          y
 # Use Training set for ISIT2024

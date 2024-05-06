@@ -78,8 +78,8 @@ def replace_timestamp_to_timediff(df_names,df_dict_init):
     df['x'] = df_x_temp
     df['y'] = df_y_temp
     # Save the modified DataFrame back into the dictionary
-    # df['timestamp'] = pd.to_datetime(df['timestamp'])  #todo
-    df['time_diff'] = df['timestamp']#.diff().dt.total_seconds() * 1000  #todo
+    df['timestamp'] = pd.to_datetime(df['timestamp'])  
+    df['time_diff'] = df['timestamp'].diff().dt.total_seconds() * 1000  
     '''
     df['timestamp'][:5]
       25353   1970-01-01 00:28:14.034820921
@@ -94,6 +94,7 @@ def replace_timestamp_to_timediff(df_names,df_dict_init):
       88016    0.000000
       88017    0.000077
     '''
+    df['time_diff'] = df['time_diff'].fillna(0)  #drop nan to 0
     #remove 'timestamp' from df
     df = df.drop(columns=['timestamp'])
     df_dict_init[df_name] = df
