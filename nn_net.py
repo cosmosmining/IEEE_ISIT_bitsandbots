@@ -37,5 +37,4 @@ class NeuralNetwork(nn.Module):
     xx = xxx.reshape(bs,-1)
     # print(time_diff[tc.arange(bs),terminate_idx-1])
     logits = self.linear_relu_stack(xx)
-    breakpoint()
     return logits  #(bs,user_type)  user_type is 0,1,..4

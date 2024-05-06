@@ -52,7 +52,7 @@ def make_df_from_data_dir(train_data_ratio = 0.8):
   return df_dict_all,df_dict_train,df_dict_eval
 # Define your custom dataset class
 class ISITDataset(Dataset):
-  def __init__(self, data,training_len = 1000,max_sample_len = 10 ):
+  def __init__(self, data,training_len = 1000,min_sample_len=1,max_sample_len = 10 ):
     self.hlisa = data['hlisa_traces']    #399023,6   #bot1
     self.gremlin = data['gremlins']      #185306,6   #bot2
     self.za = data['za_proxy']           #46340,6    #bot3
@@ -60,6 +60,7 @@ class ISITDataset(Dataset):
     self.human = data['survey_desktop']  #597524,6  #399023+185306+46340+597524 = 1228193
     self.actors = data
     self.training_len = training_len
+    self.min_sample_len = min_sample_len
     self.max_sample_len = max_sample_len  
     self.idx_2_name = [key for key in self.actors.keys()]#['hlisa_traces', 'gremlins', 'za_proxy', 'survey_desktop', 'random_mouse_with_sleep_bot']
     assert len(self.actors) == len(self.idx_2_name)
@@ -76,7 +77,7 @@ class ISITDataset(Dataset):
     name = self.idx_2_name[data_type_idx] #['userId', 'x', 'y', 'eventName', 'userType', 'time_diff']
     data_df = self.actors[name]
     len_data = len(data_df)  
-    sample_len = np.random.choice(self.max_sample_len,1)[0]+1
+    sample_len = np.random.choice(self.max_sample_len-self.min_sample_len+1,1)[0]+self.min_sample_len  #todo   
     rnd_idx = np.random.choice(len_data-self.max_sample_len,1)[0]  #least len 10
     sample = data_df.iloc[rnd_idx:rnd_idx+sample_len] 
     
@@ -108,9 +109,6 @@ class ISITDataset(Dataset):
     eventName = tc.zeros((self.max_sample_len,len(self.event_names)), dtype=tc.int32)
     eventName[tc.arange(self.max_sample_len),eventName_idx] = 1
     for user_t in sample['userType']: assert  user_t == name
-    # userType is categorical, performing one-hot encoding
-    userType = tc.zeros(len(self.idx_2_name),dtype=tc.int32)
-    userType[data_type_idx] = 1
-    # breakpoint()
+    userType = tc.tensor(data_type_idx,dtype= tc.int64)  #cross entropy must be long not int
     return userId, time_diff, x, y, eventName,terminate_idx, userType
   #           [x0,        x1, x2,x3, x4]          y
