@@ -8,8 +8,17 @@ class NeuralNetwork(nn.Module):
     super().__init__()
     self.max_len = max_len   #70*3 = 210
     self.flatten = nn.Flatten()
+    neural_size = 512
     self.linear_relu_stack = nn.Sequential(
         nn.Linear(max_len*3, 512),
+        nn.ReLU(),
+        nn.Linear(512, 512),
+        nn.ReLU(),
+        nn.Linear(512, 512),
+        nn.ReLU(),
+        nn.Linear(512, 512),
+        nn.ReLU(),
+        nn.Linear(512, 512),
         nn.ReLU(),
         nn.Linear(512, 512),
         nn.ReLU(),
