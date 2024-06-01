@@ -23,7 +23,7 @@ class GPT(nn.Module):
     for pn, p in self.named_parameters():# apply special scaled init to the residual projections, per GPT-2 paper
       if pn.endswith('c_proj.weight'):
         tc.nn.init.normal_(p, mean=0.0, std=0.02/math.sqrt(2 * c.n_layer))
-  def forward(self, idx, targets=None):
+  def forward(self, idx, targets=None,terminate_index=None):
     device = idx.device
     b, t = idx.size() #*idx [bs,sentence_len=block_len]#*ex if prompt = "hello",then block len = 5
     assert t <= self.c.block_size, f"cant forward seq of len {t}, block size is only {self.c.block_size}"
@@ -36,9 +36,12 @@ class GPT(nn.Module):
       x = block(x)
     x = self.ln_f(x)  
     if targets is not None:  # if we are given some desired targets also calculate the loss
+      # if terminate_index[0]*2 < idx.shape[1]:
+      #   # breakpoint()
+      #   assert idx[0,terminate_index[0]*2] ==0
       logits = self.lm_head(x)#(b,t,n_embd=384)->(b,t,vocab_size=65)
-      breakpoint()
-      loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+      # breakpoint()
+      loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.reshape(-1), ignore_index=-1)
     else:  #* in self.generate
       # inference-time mini-optimization: only forward lm_head on very last position
       logits = self.lm_head(x[:, [-1], :]) # using list [-1] to preserve the time dim
