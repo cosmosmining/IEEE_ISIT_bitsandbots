@@ -3,8 +3,8 @@ import matplotlib.pyplot as plt
 from torch import nn
 from torch.utils.data import DataLoader
 import numpy as np
-from data_loader_ import ISITDataset,make_df_from_data_dir
-from nn_net import NeuralNetwork
+from data_set_.data_loader_ import ISITDataset,make_df_from_data_dir
+from nets.nn_net import NeuralNetwork
 device = tc.device("cuda" if tc.cuda.is_available() else "cpu")
 
 train_data_ratio = 0.8

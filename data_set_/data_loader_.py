@@ -2,7 +2,7 @@ import torch as tc
 from torch.utils.data import Dataset
 import pandas as pd
 import numpy as np
-from preprocessing import fill_dir_dict_with_json_data,get_df_dict_init,replace_timestamp_to_timediff
+from data_set_.preprocessing import fill_dir_dict_with_json_data,get_df_dict_init,replace_timestamp_to_timediff
 ### data loader script from https://www.kaggle.com/code/tebs89/bit-and-bots-dataloader/notebook
 
 def make_df_from_data_dir(train_data_ratio = 0.8):
@@ -111,4 +111,57 @@ class ISITDataset(Dataset):
     for user_t in sample['userType']: assert  user_t == name
     userType = tc.tensor(data_type_idx,dtype= tc.int64)  #cross entropy must be long not int
     return userId, time_diff, x, y, eventName,terminate_idx, userType
+  #           [x0,        x1, x2,x3, x4]          y
+
+class ISITDataset_gen(Dataset):
+  def __init__(self, data,training_len = 1000,min_sample_len=1,max_sample_len = 10 ):
+    self.human = data['survey_desktop']  #597524,6  #399023+185306+46340+597524 = 1228193
+    self.actors = data
+    self.training_len = training_len
+    self.min_sample_len = min_sample_len
+    self.max_sample_len = max_sample_len  
+    self.data = self.human #1228193x6
+    # self.data.columns = ['userId', 'x', 'y', 'eventName', 'userType', 'time_diff']
+    self.event_names = sorted(self.data['eventName'].unique())
+    '''['beforeunload', 'blur', 'change', 'click', 'contextmenu', 'copy', 'dblclick', 'error', 'focus', 'hashchange', 
+    'keydown', 'keypress', 'keyup', 'load', 'message', 'mousedown', 'mousemove', 'mouseout', 'mouseover', 'mouseup', 'offline', 'online', 'pagehide', 'pageshow', 
+    'paste', 'popstate', 'resize', 'scroll', 'select', 'storage', 'unload', 'wheel']
+    '''
+  def __len__(self):  return self.training_len
+  def __getitem__(self, idx):
+    data_df = self.data
+    len_data = len(data_df)  
+    sample_len = np.random.choice(self.max_sample_len-self.min_sample_len+1,1)[0]+self.min_sample_len  #todo   
+    rnd_idx = np.random.choice(len_data-self.max_sample_len,1)[0]  #least len 10
+    sample = data_df.iloc[rnd_idx:rnd_idx+sample_len] 
+    
+    # Convert 'x' to PyTorch tensor
+    x_raw = tc.tensor(sample['x'].to_numpy(),dtype=tc.float32)
+    x = tc.zeros(self.max_sample_len, dtype=tc.float32)
+    x[:len(x_raw)] = x_raw
+
+    terminate_idx = len(x_raw)
+    # Convert 'y' to PyTorch tensor
+    y_raw = tc.tensor(sample['y'].to_numpy(), dtype=tc.float32)
+    y = tc.zeros(self.max_sample_len, dtype=tc.float32)
+    y[:len(y_raw)] = y_raw
+    # Convert 'userId' to PyTorch tensor:
+    userId_raw = tc.tensor(sample['userId'].to_numpy(), dtype=tc.int64)
+    userId = tc.zeros(self.max_sample_len,dtype=tc.int64)
+    userId[:len(userId_raw)] = userId_raw
+    # Convert 'timestamp' to PyTorch tensor:
+    time_diff_raw = tc.tensor(sample['time_diff'].to_numpy(), dtype=tc.float32)  
+    time_diff = tc.zeros(self.max_sample_len,dtype=tc.float32)  
+    time_diff[:len(time_diff_raw)] = time_diff_raw
+    # eventName is categorical, performing one-hot encoding
+    eventName_idx = tc.zeros(self.max_sample_len,dtype=tc.int64)
+    eventName_raw = sample['eventName']
+    for idx, event in enumerate(eventName_raw):
+      eventName_idx[idx] = self.event_names.index(event)  #todo accelerate
+    assert self.max_sample_len == x.shape[0] == y.shape[0] == userId.shape[0] == time_diff.shape[0] #bs
+    assert terminate_idx == len(x_raw) == len(y_raw) == len(userId_raw) == len(time_diff_raw) == len(sample['eventName'])
+    eventName = tc.zeros((self.max_sample_len,len(self.event_names)), dtype=tc.int32)
+    eventName[tc.arange(self.max_sample_len),eventName_idx] = 1
+    for i in sample['userType']: assert i == 'survey_desktop'
+    return userId, time_diff, x, y, eventName,terminate_idx
   #           [x0,        x1, x2,x3, x4]          y

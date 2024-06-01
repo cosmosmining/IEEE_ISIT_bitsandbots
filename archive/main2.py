@@ -5,7 +5,7 @@ import torch as tc
 from torch.utils.data import Dataset
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
-from preprocessing import fill_dir_dict_with_json_data,get_df_dict_init,replace_timestamp_to_timediff
+from data_set_.preprocessing import fill_dir_dict_with_json_data,get_df_dict_init,replace_timestamp_to_timediff
 import numpy as np
 #cleaning datasets and combine all the JSON files together
 # Define the list of directories to check. These are the directories which contain your data files.
