@@ -1,3 +1,4 @@
 data/** 
 myver/** 
-model.ckpt
+# model.ckpt
+**.ckpt

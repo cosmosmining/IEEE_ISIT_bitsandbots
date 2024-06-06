@@ -34,3 +34,25 @@ def configure_optimizers(self, weight_decay, learning_rate, betas, device_type):
   print(f"using fused AdamW: {use_fused}")
   return optimizer
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+
+class Discretizer:
+  #todo   use log
+  def __init__(self,cont_max,token_num):
+    self.cont_max = cont_max
+    self.token_num = token_num
+    self.scale = (token_num-1)/cont_max  
+    self.interval  = cont_max/(token_num-1)
+  def cont_2_token(self,cont_values):
+    assert cont_values.max()<=self.cont_max
+    token_values_raw=cont_values*self.scale  
+    token_values = token_values_raw.to(dtype=tc.int64)
+    assert token_values.max()<=self.token_num
+    return token_values
+  def token_2_cont(self,token_values):
+    token_cont = token_values.to(tc.float32)
+    cont_values_raw = token_cont/self.scale
+    cont_values = cont_values_raw +\
+         tc.rand(token_values.shape)*self.interval
+    assert cont_values.max()<=self.cont_max
+    return cont_values

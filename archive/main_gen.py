@@ -42,58 +42,53 @@ max_sample_len_train = 70
 min_sample_len_train = 1
 training_len  = 1000  
 eval_len = 10
-bs = 128
-load_from_checkpoint = False
-ckpt_path = 'gpt.ckpt'
-train_dataset = ISITDataset_gen(df_dict_train,training_len=training_len*bs,
+batch_size = 128
+train_dataset = ISITDataset_gen(df_dict_train,training_len=training_len*batch_size,
                             min_sample_len=min_sample_len_train,
                             max_sample_len=max_sample_len_train)   
-eval_dataset  = ISITDataset_gen(df_dict_eval,training_len=eval_len*bs,
+eval_dataset  = ISITDataset_gen(df_dict_eval,training_len=eval_len*batch_size,
                             min_sample_len=max_sample_len_train,
                             max_sample_len=max_sample_len_train)
-train_dataloader = DataLoader(train_dataset, batch_size=bs, shuffle=True)
-eval_dataloader = DataLoader(eval_dataset, batch_size=bs, shuffle=True)
+train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+eval_dataloader = DataLoader(eval_dataset, batch_size=batch_size, shuffle=True)
 idx = 0
 model = GPT(gpt_conf).to(device)
 #** gpt blocksize  
 blocksize = 140-1
-blocksize = max_sample_len_train*3-1
+blocksize = max_sample_len_train*2-1
 # learning_rate = 0.01
 beta1 = 0.9;  beta2 = 0.99  
 learning_rate:float = 1e-3;weight_decay:float = 1e-1;grad_clip:float = 1.0
 # optim = tc.optim.Adam(model.parameters(),lr=learning_rate)
 optim=configure_optimizers(model,weight_decay, learning_rate, (beta1,beta2), device)
-if load_from_checkpoint == False:
-  for batch in train_dataloader:
-    # for task A. Defense Task,  only the time_diff and position [x,y] elements recorded for each event can be used as input to classifier  
-    _, time_diff, pos_x, pos_y, _,terminate_idx = batch  
-    #* pos_x,pos_y(bs=128,n_of_events=70),terminate_idx(bs=128),userType(bs=128)
-    # assert (pos_x.max()<=max_xxx) and (pos_x.min()>=0) and (pos_y.max()<=max_yyy) and (pos_y.min()>=0) # assert (pos_x.max()<2841) and (pos_x.min()>=0) and (pos_y.max()<4428) and (pos_y.min()>=0)   
-    # assert tc.equal(pos_x, tc.floor(pos_x)) and tc.equal(pos_y, tc.floor(pos_y))  #pos_x and pos_y are integer
-    # userId, time_diff, x, y, eventName, userType = batch
-    time_diff_token = disc.cont_2_token(time_diff).to(dtype=tc.float32)  #todo use log for small numbers
-    pos_xyt = tc.stack((pos_x,pos_y,time_diff_token),dim=-1).reshape(bs,-1)  #(bs=128,n_of_events*2 = 140)
-    if tc.any(time_diff_token>0):
-      print(time_diff_token[time_diff_token>0])  #todo  use log at discretizer
-    assert  (pos_xyt.max()<=vocab_size) and (pos_xyt.min()>=0) and (time_diff.max()<= max_ttt)
-    pos_xyt = pos_xyt.to(device=device,dtype=tc.int64)  #* (bs=128,len=140)
-    xx = pos_xyt[:,:blocksize]
-    yy = pos_xyt[:,1:blocksize+1]
-    assert xx.shape[0]==bs and xx.shape[1]==blocksize and yy.shape[0]==bs and yy.shape[1]==blocksize
-    assert xx.max()<vocab_size and yy.max()<vocab_size
-    terminate_idx =terminate_idx.to(device) 
-    _,loss = model(xx,yy,terminate_idx)#,terminate_idx)
-    optim.zero_grad() 
-    loss.backward()
-    optim.step()
-    idx+=1
-    # breakpoint()
-    print(f"{idx}/{training_len}, term_idx {terminate_idx[0].item()}, {loss.item()=}")
-    assert min_sample_len_train<=terminate_idx[0].item()<=max_sample_len_train
-  tc.save({'state_dict':model.state_dict()},ckpt_path)
-else:
-  checkpoint = tc.load(ckpt_path)
-  model.load_state_dict(checkpoint['state_dict'])
+for batch in train_dataloader:
+  # for task A. Defense Task,  only the time_diff and position [x,y] elements recorded for each event can be used as input to classifier  
+  _, time_diff, pos_x, pos_y, _,terminate_idx = batch  
+  #* pos_x,pos_y(bs=128,n_of_events=70),terminate_idx(bs=128),userType(bs=128)
+  # assert (pos_x.max()<=max_xxx) and (pos_x.min()>=0) and (pos_y.max()<=max_yyy) and (pos_y.min()>=0) # assert (pos_x.max()<2841) and (pos_x.min()>=0) and (pos_y.max()<4428) and (pos_y.min()>=0)   
+  # assert tc.equal(pos_x, tc.floor(pos_x)) and tc.equal(pos_y, tc.floor(pos_y))  #pos_x and pos_y are integer
+  # userId, time_diff, x, y, eventName, userType = batch
+  time_diff_token = disc.cont_2_token(time_diff).to(dtype=tc.float32)  #todo use exp
+  pos_xy = tc.stack((pos_x,pos_y),dim=-1).reshape(batch_size,-1)  #(bs=128,n_of_events*2 = 140)
+  assert  (pos_xy.max()<=vocab_size) and (pos_xy.min()>=0) and (time_diff.max()<= max_ttt)
+  pos_xyt = tc.stack((pos_x,pos_y,time_diff_token),dim=-1).reshape(batch_size,-1)
+  breakpoint()
+  pos_xy = pos_xy.to(device=device,dtype=tc.int64)  #* (bs=128,len=140)
+  xx = pos_xy[:,:blocksize]
+  yy = pos_xy[:,1:blocksize+1]
+  breakpoint()
+  assert xx.shape[0]==batch_size and xx.shape[1]==blocksize
+  assert yy.shape[0]==batch_size and yy.shape[1]==blocksize
+  assert xx.max()<vocab_size and yy.max()<vocab_size
+  terminate_idx =terminate_idx.to(device) 
+  _,loss = model(xx,yy,terminate_idx)#,terminate_idx)
+  optim.zero_grad() 
+  loss.backward()
+  optim.step()
+  idx+=1
+  # breakpoint()
+  print(f"{idx}/{training_len}, term_idx {terminate_idx[0].item()}, {loss.item()=}")
+  assert min_sample_len_train<=terminate_idx[0].item()<=max_sample_len_train
 
 # ---------------------------
 num_samples = 10 # number of samples to draw
@@ -107,8 +102,7 @@ ctx = nullcontext() if device == 'cpu' else tc.amp.autocast(device_type=device, 
 # encode the beginning of the prompt
 x = 21  
 y = 153
-t = 0
-start_ids = [x,y,t]
+start_ids = [x,y]
 x = (tc.tensor(start_ids, dtype=tc.long, device=device)[None, ...])
 #*** x.shape  [1,2]=  bs, start_sentence_len
 # run generation
