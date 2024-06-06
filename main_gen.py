@@ -43,7 +43,7 @@ min_sample_len_train = 1
 training_len  = 1000  
 eval_len = 10
 bs = 128
-load_from_checkpoint = False
+load_from_checkpoint = True
 ckpt_path = 'gpt.ckpt'
 train_dataset = ISITDataset_gen(df_dict_train,training_len=training_len*bs,
                             min_sample_len=min_sample_len_train,
@@ -97,7 +97,7 @@ else:
 
 # ---------------------------
 num_samples = 10 # number of samples to draw
-max_new_tokens = blocksize # number of tokens generated in each sample
+max_new_tokens = blocksize+1 # number of tokens generated in each sample
 temperature = 0.8 # 1.0 = no change, < 1.0 = less random, > 1.0 = more random, in predictions
 top_k = 200 # retain only the top_k most likely tokens, clamp others to have 0 probability
 device = 'cuda' # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1', etc.
@@ -115,7 +115,68 @@ x = (tc.tensor(start_ids, dtype=tc.long, device=device)[None, ...])
 with tc.no_grad():
   with ctx:
     for k in range(num_samples):
-      y = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k)
-      print(y)
-      breakpoint()
+      gen_xyt = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k)
+      print(gen_xyt)
+      bs,bl = gen_xyt.shape 
+      gen_xyt = gen_xyt.reshape(bs,-1,3)  
       print('---------------')
+from nets.nn_net import NeuralNetwork
+from data_set_.data_loader_ import ISITDataset
+max_sample_len_eval = 70  #*70
+bs_eval = 1
+eval_dataset  = ISITDataset(df_dict_eval,training_len=eval_len*bs_eval,
+                            min_sample_len=max_sample_len_eval,
+                            max_sample_len=max_sample_len_eval)
+eval_dataloader = DataLoader(eval_dataset, batch_size=bs_eval, 
+                             shuffle=True)
+
+category = len(eval_dataset.idx_2_name)  #5 #['hlisa_traces', 'gremlins', 'za_proxy', 'survey_desktop', 'random_mouse_with_sleep_bot']
+ckpt_path = 'model.ckpt'
+model = NeuralNetwork(max_len=max_sample_len_train,
+                      output_size=category).to(device)
+checkpoint = tc.load(ckpt_path)
+model.load_state_dict(checkpoint['state_dict'])
+num_correct = 0; num_samples = 0
+test_i = 0
+conf_thres_hold = 0.5
+n_correct_dict = {}
+n_sample_dict = {}
+for batch in eval_dataloader:
+  _, time_diff, pos_x, pos_y, _,terminate_idx, userType = batch
+  ##time_diff() pos_x (128,70)=(bs,n_of_events)
+  time_diff = time_diff.to(device)
+  pos_x = pos_x.to(device); pos_y = pos_y.to(device);
+  assert terminate_idx[0]==max_sample_len_eval
+  userType = userType.to(device)
+  y_target = userType   
+  # assert tc.all(terminate_idx == max_sample_len_eval).cpu()
+  pos_x2 = tc.zeros_like(pos_x)  
+  pos_y2 = tc.zeros_like(pos_y)  
+  time_diff2 = tc.zeros_like(time_diff)  
+  ii = 0   
+  max_conf = 0
+  while ii<max_sample_len_eval and max_conf<conf_thres_hold:
+    #**  request more data if the confi
+    pos_x2[0,ii] = pos_x[0,ii]
+    pos_y2[0,ii] = pos_y[0,ii]
+    time_diff2[0,ii] = time_diff[0,ii] 
+    y_hat = model(time_diff2,pos_x2,pos_y2,terminate_idx)
+    breakpoint()
+    conf_y_hat = tc.softmax(y_hat,dim=1)
+    max_conf = conf_y_hat.max(dim=1)[0]
+    ii += 1   
+    # breakpoint()
+    # print(ii,"max_conf",max_conf)
+  # breakpoint()
+  _, predictions = y_hat.max(1)
+  ii = ii-1
+  if not (ii in n_correct_dict):
+    n_correct_dict[ii] = 0.
+  if not (ii in n_sample_dict):
+    n_sample_dict[ii] = 0.
+  n_correct_dict[ii] +=  (predictions == y_target).sum().cpu().item() 
+  n_sample_dict[ii] +=  predictions.size(0)
+  num_correct += (predictions == y_target).sum();
+  num_samples += predictions.size(0)
+  test_i+=1
+  print(f"{test_i}/{eval_len}___")

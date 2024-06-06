@@ -30,7 +30,8 @@ train_dataloader = DataLoader(train_dataset, batch_size=bs, shuffle=True)
 eval_dataloader = DataLoader(eval_dataset, batch_size=bs_eval, shuffle=True)
 idx = 0
 category = len(train_dataset.idx_2_name)  #5 #['hlisa_traces', 'gremlins', 'za_proxy', 'survey_desktop', 'random_mouse_with_sleep_bot']
-model = NeuralNetwork(max_len=max_sample_len_train,output_size=category).to(device)
+model = NeuralNetwork(max_len=max_sample_len_train,
+                      output_size=category).to(device)
 criterion = nn.CrossEntropyLoss()  # sigma [ y log(y_hat) ]
 learning_rate = 0.01
 optimizer = tc.optim.Adam(model.parameters(),lr=learning_rate)
@@ -63,6 +64,7 @@ test_i = 0
 conf_thres_hold = 0.5
 n_correct_dict = {}
 n_sample_dict = {}
+#todo   the official example is using avg event with difference threshold   
 for batch in eval_dataloader:
   _, time_diff, pos_x, pos_y, _,terminate_idx, userType = batch
   ##time_diff() pos_x (128,70)=(bs,n_of_events)
