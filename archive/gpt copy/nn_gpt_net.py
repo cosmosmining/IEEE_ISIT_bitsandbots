@@ -64,3 +64,29 @@ class GPT(nn.Module):
       loss = None
     # breakpoint()
     return logits, loss
+  @tc.no_grad()
+  def generate(self, idx, max_new_tokens, temperature=1.0, top_k=None):
+    """Take condition seq of indices (b,t):tc.Long 
+    complete seq max_new_tokens times, 
+    feed predictions back into model each time."""
+    for _ in range(max_new_tokens):
+      # if seq context grow too long we must crop it at block_size
+      idx_cond = idx if idx.size(1) <= self.c.block_size else idx[:, -self.c.block_size:]
+      #* ex if prompt = "hello"  then block len = 5
+      # logits, _ = self(tc.clone(idx_cond))#*idx_cond(bs=1,block_len)# forward the model to get logits for index in seq
+      # logits = [bs,vocab_size]   (last character)
+      logits, _ = self(idx_cond,idx_cond)
+      logits = logits[:,[-1],:]
+      # breakpoint()
+      logits = logits[:, -1, :] / temperature# pluck logits at final step and scale by desired temperature
+      if top_k is not None:# optionally crop the logits to only the top k options
+        #* topk=200
+        v, _ = tc.topk(logits, min(top_k, logits.size(-1)))
+        logits[logits < v[:, [-1]]] = -float('Inf')
+      # apply softmax to convert logits to (normalized) probabilities
+      probs = F.softmax(logits, dim=-1)
+      # sample from the distribution
+      idx_next = tc.multinomial(probs, num_samples=1)
+      # append sampled index to the running sequence and continue
+      idx = tc.cat((idx, idx_next), dim=1)  #add the newly gen last word to the end of the sentence 
+    return idx

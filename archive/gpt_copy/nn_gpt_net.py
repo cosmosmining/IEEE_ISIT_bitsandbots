@@ -2,7 +2,7 @@ import math
 import torch as tc
 import torch.nn as nn
 from torch.nn import functional as F   
-import numpy as np
+
 from config import GPTConfig
 from nets.gpt.trans import LayerNorm,Block
 from nets.gpt.utils import init_weights
@@ -27,24 +27,6 @@ class GPT(nn.Module):
     device = idx.device
     b, t = idx.size() #*idx [bs,sentence_len=block_len]#*ex if prompt = "hello",then block len = 5
     assert t <= self.c.block_size, f"cant forward seq of len {t}, block size is only {self.c.block_size}"
-    '''
-    if terminate_index != None:
-      term_idx = (terminate_index*3).reshape(1,-1)
-      # assert tc.all(term_idx>=3)
-      print(idx[tc.arange(b),term_idx])
-      # idx[0]
-      # idx[0,term_idx[0]]  #nothing
-      # idx[0,term_idx[0]-1]  #t=0
-      # idx[0,term_idx[0]-2]  #y=971
-      # idx[0,term_idx[0]-3]  #x=383
-      print(targets[tc.arange(b),term_idx])
-      # targets[0]
-      # targets[0,term_idx[0]]  #nothing
-      # targets[0,term_idx[0]-1]  #nothing
-      # targets[0,term_idx[0]-2]  #t=0
-      # targets[0,term_idx[0]-3]  #y=971
-      visible_end = tc.cat((term_idx-3,term_idx-2,term_idx-1))    
-    '''
     pos = tc.arange(0, t, dtype=tc.long, device=device) # shape (t)  #*pos =[0]
     # pos = [1,2,3,...,sentence_len] for pos embed
     tok_emb = self.wte(idx) # token embed (b,t)->(b, t, n_embd)
@@ -55,7 +37,7 @@ class GPT(nn.Module):
     x = self.ln_f(x)  
     if targets is not None:  # if we are given some desired targets also calculate the loss
       logits = self.lm_head(x)#(b,t,n_embd=384)->(b,t,vocab_size=65)
-      
+      # breakpoint()
       loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.reshape(-1), ignore_index=-1)
     else:  #* in self.generate
       # inference-time mini-optimization: only forward lm_head on very last position
@@ -64,3 +46,26 @@ class GPT(nn.Module):
       loss = None
     # breakpoint()
     return logits, loss
+  @tc.no_grad()
+  def generate(self, idx, max_new_tokens, temperature=1.0, top_k=None):
+    """Take condition seq of indices (b,t):tc.Long 
+    complete seq max_new_tokens times, 
+    feed predictions back into model each time."""
+    for _ in range(max_new_tokens):
+      # if seq context grow too long we must crop it at block_size
+      idx_cond = idx if idx.size(1) <= self.c.block_size else idx[:, -self.c.block_size:]
+      #* ex if prompt = "hello"  then block len = 5
+      logits, _ = self(idx_cond)#*idx_cond(bs=1,block_len)# forward the model to get logits for index in seq
+      # logits = [bs,vocab_size]   (last character)
+      logits = logits[:, -1, :] / temperature# pluck logits at final step and scale by desired temperature
+      if top_k is not None:# optionally crop the logits to only the top k options
+        #* topk=200
+        v, _ = tc.topk(logits, min(top_k, logits.size(-1)))
+        logits[logits < v[:, [-1]]] = -float('Inf')
+      # apply softmax to convert logits to (normalized) probabilities
+      probs = F.softmax(logits, dim=-1)
+      # sample from the distribution
+      idx_next = tc.multinomial(probs, num_samples=1)
+      # append sampled index to the running sequence and continue
+      idx = tc.cat((idx, idx_next), dim=1)  #add the newly gen last word to the end of the sentence 
+    return idx

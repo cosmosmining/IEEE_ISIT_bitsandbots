@@ -37,6 +37,7 @@ class CausalSelfAttention(nn.Module):
     att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf'))
     att = F.softmax(att, dim=-1)
     att = self.attn_dropout(att)
+    breakpoint()
     y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
     # breakpoint()
     y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side

@@ -107,16 +107,19 @@ ini_xyt[0,end_idx+2] = 0    #t
 #*** x.shape  [1,3]=  bs, start_sentence_len
 # run generation
 @tc.no_grad()
-def generate(model_, idx, end_idx_, temperature=1.0, top_k=None):
+def generate(model_, idx, max_new_tokens, temperature=1.0, top_k=None):
   """Take condition seq of indices (b,t):tc.Long 
   complete seq max_new_tokens times, 
   feed predictions back into model each time."""
-  assert idx.size(1) <= model_.c.block_size
-  for ii in range(2,end_idx_-1):
+  for _ in range(max_new_tokens):
     # if seq context grow too long we must crop it at block_size
-    idx_cond = idx 
-    logits, _ = model_(idx_cond,idx_cond) 
-    logits = logits[:,[ii],:]
+    idx_cond = idx if idx.size(1) <= model_.c.block_size else idx[:, -model_.c.block_size:]
+    #* ex if prompt = "hello"  then block len = 5
+    # logits, _ = self(tc.clone(idx_cond))#*idx_cond(bs=1,block_len)# forward the model to get logits for index in seq
+    # logits = [bs,vocab_size]   (last character)
+    logits, _ = model_(idx_cond,idx_cond)
+    logits = logits[:,[-1],:]
+    # breakpoint()
     logits = logits[:, -1, :] / temperature# pluck logits at final step and scale by desired temperature
     if top_k is not None:# optionally crop the logits to only the top k options
       #* topk=200
@@ -127,17 +130,17 @@ def generate(model_, idx, end_idx_, temperature=1.0, top_k=None):
     # sample from the distribution
     idx_next = tc.multinomial(probs, num_samples=1)
     # append sampled index to the running sequence and continue
-    # idx = tc.cat((idx, idx_next), dim=1)  #add the newly gen last word to the end of the sentence 
-    idx[0,ii+1]= idx_next[0,0]
+    idx = tc.cat((idx, idx_next), dim=1)  #add the newly gen last word to the end of the sentence 
   return idx
 with tc.no_grad():
   with ctx:
     for k in range(num_samples):
-      gen_xyt = generate(model,ini_xyt,end_idx, temperature=temperature, top_k=top_k)
+      gen_xyt = generate(model,start_xyt, max_new_tokens, temperature=temperature, top_k=top_k)
       print(gen_xyt)
       bs,bl = gen_xyt.shape 
       gen_xyt = gen_xyt.reshape(bs,-1,3)  
       print('---------------')
+breakpoint()
 from nets.nn_net import NeuralNetwork
 from data_set_.data_loader_ import ISITDataset
 max_sample_len_eval = 70  #*70
@@ -178,26 +181,12 @@ for batch in eval_dataloader:
   _, time_diff, pos_x, pos_y, _,terminate_idx = batch
   time_diff=time_diff.to(device);  
   pos_x=pos_x.to(device);          pos_y=pos_y.to(device);
-  end_idx_raw = np.random.randint(10,max_sample_len_eval)
-  assert 10<= end_idx_raw<max_sample_len_eval
-
   assert terminate_idx[0]==max_sample_len_eval
   x2 = int(pos_x[0,0].cpu().item())
   y2 = int(pos_y[0,0].cpu().item())
   t2 = int(time_diff[0,0].cpu().item())  #todo   disc 2 token
   start_xyt = (tc.tensor([x2,y2,t2], dtype=tc.long, device=device)[None, ...])
-  
-  ini_xyt = tc.zeros((1,max_new_tokens),dtype=tc.long, device=device)
-  end_idx = end_idx_raw*3
-  ini_xyt[0,0] = pos_x[0,0]   #x 
-  ini_xyt[0,1] = pos_y[0,0]   #y
-  ini_xyt[0,2] = time_diff[0,0]    #t
-  ini_xyt[0,end_idx] = pos_x[0,end_idx_raw] #x  
-  ini_xyt[0,end_idx+1] = pos_y[0,end_idx_raw] #y
-  ini_xyt[0,end_idx+2] = time_diff[0,end_idx_raw]    #t
-  # gen_xyt = model.generate(start_xyt, max_new_tokens, temperature=temperature, top_k=top_k)
-  gen_xyt = generate(model,ini_xyt,end_idx, temperature=temperature, top_k=top_k)
-  
+  gen_xyt = model.generate(start_xyt, max_new_tokens, temperature=temperature, top_k=top_k)
   bs,bl = gen_xyt.shape 
   gen_xyt = gen_xyt.reshape(bs,-1,3)   
   pos_x_gen = gen_xyt[:,:,0].to(tc.float32)[:,:blocksize_mlp]

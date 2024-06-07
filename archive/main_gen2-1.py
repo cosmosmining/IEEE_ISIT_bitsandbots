@@ -8,7 +8,6 @@ from nets.gpt.utils import configure_optimizers,Discretizer
 import matplotlib.pyplot as plt
 import numpy as np
 from contextlib import nullcontext
-from torch.nn import functional as F  
 device = tc.device("cuda" if tc.cuda.is_available() else "cpu")
 gpt_conf = GPTConfig()
 train_data_ratio = 0.8
@@ -31,10 +30,10 @@ disc = Discretizer(max_ttt,vocab_size)
 # Use Training set for ISIT2024
 max_sample_len_train = 70
 min_sample_len_train = 3
-training_len  =600# 200#* 1000  
+training_len  = 1000
 eval_len = 10
 bs = 128
-load_from_checkpoint = True
+load_from_checkpoint = False
 
 ckpt_path = 'gpt.ckpt'
 if not os.path.isfile(ckpt_path):
@@ -51,6 +50,7 @@ eval_dataloader = DataLoader(eval_dataset, batch_size=bs, shuffle=True)
 idx = 0
 model = GPT(gpt_conf).to(device)
 #** gpt blocksize  
+blocksize = 140-1
 blocksize = max_sample_len_train*3-1
 beta1 = 0.9;  beta2 = 0.99  
 learning_rate:float = 1e-3;weight_decay:float = 1e-1;grad_clip:float = 1.0
@@ -61,6 +61,9 @@ if load_from_checkpoint == False:
     # for task A. Defense Task,  only the time_diff and position [x,y] elements recorded for each event can be used as input to classifier  
     _, time_diff, pos_x, pos_y, _,terminate_idx = batch  
     #* pos_x,pos_y(bs=128,n_of_events=70),terminate_idx(bs=128),userType(bs=128)
+    # assert (pos_x.max()<=max_xxx) and (pos_x.min()>=0) and (pos_y.max()<=max_yyy) and (pos_y.min()>=0) # assert (pos_x.max()<2841) and (pos_x.min()>=0) and (pos_y.max()<4428) and (pos_y.min()>=0)   
+    # assert tc.equal(pos_x, tc.floor(pos_x)) and tc.equal(pos_y, tc.floor(pos_y))  #pos_x and pos_y are integer
+    # userId, time_diff, x, y, eventName, userType = batch
     time_diff_token = disc.cont_2_token(time_diff).to(dtype=tc.float32)  #todo use log for small numbers
     pos_xyt = tc.stack((pos_x,pos_y,time_diff_token),dim=-1).reshape(bs,-1)  #(bs=128,n_of_events*2 = 140)
     if tc.any(time_diff_token>0):
@@ -71,6 +74,7 @@ if load_from_checkpoint == False:
     yy = pos_xyt[:,1:blocksize+1]
     assert xx.shape[0]==bs and xx.shape[1]==blocksize and yy.shape[0]==bs and yy.shape[1]==blocksize
     assert xx.max()<vocab_size and yy.max()<vocab_size
+    terminate_idx =terminate_idx.to(device) 
     _,loss = model(xx,yy,terminate_idx)#,terminate_idx)
     optim.zero_grad() 
     loss.backward()
@@ -95,45 +99,13 @@ ptdtype = {'float32':tc.float32,'bfloat16':tc.bfloat16,'float16':tc.float16}[dty
 ctx = nullcontext() if device == 'cpu' else tc.amp.autocast(device_type=device, dtype=ptdtype)
 # encode the beginning of the prompt
 x = 21;y = 153;t = 0
-end_idx = 3*50
 start_xyt = (tc.tensor([x,y,t], dtype=tc.long, device=device)[None, ...])
-ini_xyt = tc.zeros((1,max_new_tokens),dtype=tc.long, device=device)
-ini_xyt[0,0] = 21   #x 
-ini_xyt[0,1] = 153  #y
-ini_xyt[0,2] = 0    #t
-ini_xyt[0,end_idx] = 56  #x  
-ini_xyt[0,end_idx+1] = 321  #y
-ini_xyt[0,end_idx+2] = 0    #t
-#*** x.shape  [1,3]=  bs, start_sentence_len
+#*** x.shape  [1,2]=  bs, start_sentence_len
 # run generation
-@tc.no_grad()
-def generate(model_, idx, end_idx_, temperature=1.0, top_k=None):
-  """Take condition seq of indices (b,t):tc.Long 
-  complete seq max_new_tokens times, 
-  feed predictions back into model each time."""
-  assert idx.size(1) <= model_.c.block_size
-  for ii in range(2,end_idx_-1):
-    # if seq context grow too long we must crop it at block_size
-    idx_cond = idx 
-    logits, _ = model_(idx_cond,idx_cond) 
-    logits = logits[:,[ii],:]
-    logits = logits[:, -1, :] / temperature# pluck logits at final step and scale by desired temperature
-    if top_k is not None:# optionally crop the logits to only the top k options
-      #* topk=200
-      v, _ = tc.topk(logits, min(top_k, logits.size(-1)))
-      logits[logits < v[:, [-1]]] = -float('Inf')
-    # apply softmax to convert logits to (normalized) probabilities
-    probs = F.softmax(logits, dim=-1)
-    # sample from the distribution
-    idx_next = tc.multinomial(probs, num_samples=1)
-    # append sampled index to the running sequence and continue
-    # idx = tc.cat((idx, idx_next), dim=1)  #add the newly gen last word to the end of the sentence 
-    idx[0,ii+1]= idx_next[0,0]
-  return idx
 with tc.no_grad():
   with ctx:
     for k in range(num_samples):
-      gen_xyt = generate(model,ini_xyt,end_idx, temperature=temperature, top_k=top_k)
+      gen_xyt = model.generate(start_xyt, max_new_tokens, temperature=temperature, top_k=top_k)
       print(gen_xyt)
       bs,bl = gen_xyt.shape 
       gen_xyt = gen_xyt.reshape(bs,-1,3)  
@@ -178,26 +150,12 @@ for batch in eval_dataloader:
   _, time_diff, pos_x, pos_y, _,terminate_idx = batch
   time_diff=time_diff.to(device);  
   pos_x=pos_x.to(device);          pos_y=pos_y.to(device);
-  end_idx_raw = np.random.randint(10,max_sample_len_eval)
-  assert 10<= end_idx_raw<max_sample_len_eval
-
   assert terminate_idx[0]==max_sample_len_eval
   x2 = int(pos_x[0,0].cpu().item())
   y2 = int(pos_y[0,0].cpu().item())
   t2 = int(time_diff[0,0].cpu().item())  #todo   disc 2 token
   start_xyt = (tc.tensor([x2,y2,t2], dtype=tc.long, device=device)[None, ...])
-  
-  ini_xyt = tc.zeros((1,max_new_tokens),dtype=tc.long, device=device)
-  end_idx = end_idx_raw*3
-  ini_xyt[0,0] = pos_x[0,0]   #x 
-  ini_xyt[0,1] = pos_y[0,0]   #y
-  ini_xyt[0,2] = time_diff[0,0]    #t
-  ini_xyt[0,end_idx] = pos_x[0,end_idx_raw] #x  
-  ini_xyt[0,end_idx+1] = pos_y[0,end_idx_raw] #y
-  ini_xyt[0,end_idx+2] = time_diff[0,end_idx_raw]    #t
-  # gen_xyt = model.generate(start_xyt, max_new_tokens, temperature=temperature, top_k=top_k)
-  gen_xyt = generate(model,ini_xyt,end_idx, temperature=temperature, top_k=top_k)
-  
+  gen_xyt = model.generate(start_xyt, max_new_tokens, temperature=temperature, top_k=top_k)
   bs,bl = gen_xyt.shape 
   gen_xyt = gen_xyt.reshape(bs,-1,3)   
   pos_x_gen = gen_xyt[:,:,0].to(tc.float32)[:,:blocksize_mlp]
