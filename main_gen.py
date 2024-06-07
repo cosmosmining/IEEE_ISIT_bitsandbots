@@ -5,6 +5,8 @@ from config import GPTConfig
 from nets.gpt.nn_gpt_net import GPT
 from nets.gpt.utils import configure_optimizers,Discretizer   
 import os
+import matplotlib.pyplot as plt
+import numpy as np
 from contextlib import nullcontext
 device = tc.device("cuda" if tc.cuda.is_available() else "cpu")
 gpt_conf = GPTConfig()
@@ -97,7 +99,7 @@ else:
   model.load_state_dict(checkpoint['state_dict'])
 
 # ---------------------------
-num_samples = 10 # number of samples to draw
+num_samples = 5 # number of samples to draw
 max_new_tokens = blocksize+1 # number of tokens generated in each sample
 temperature = 0.8 # 1.0 = no change, < 1.0 = less random, > 1.0 = more random, in predictions
 top_k = 200 # retain only the top_k most likely tokens, clamp others to have 0 probability
@@ -135,49 +137,98 @@ category = len(eval_dataset.idx_2_name)  #5 #['hlisa_traces', 'gremlins', 'za_pr
 ckpt_path = 'model.ckpt'
 model = NeuralNetwork(max_len=max_sample_len_train,
                       output_size=category).to(device)
+if not os.path.isfile(ckpt_path):
+  raise Exception('you dont have defensive task ckpt, please run "python main.py" first') 
 checkpoint = tc.load(ckpt_path)
 model.load_state_dict(checkpoint['state_dict'])
-num_correct = 0; num_samples = 0
+thres_num = 10
+conf_thres_list = np.linspace(0,1,thres_num+1)[1:-1]
+#*  [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+tot_num_correct = 0; tot_num_samples = 0
 test_i = 0
-conf_thres_hold = 0.5
-n_correct_dict = {}
-n_sample_dict = {}
+conf_n_correct_list      = np.zeros(len(conf_thres_list))
+conf_tot_n_samples_list  = np.zeros(len(conf_thres_list))
+n_to_detect_list       = np.zeros(len(conf_thres_list))
 for batch in eval_dataloader:
   _, time_diff, pos_x, pos_y, _,terminate_idx, userType = batch
-  ##time_diff() pos_x (128,70)=(bs,n_of_events)
-  time_diff = time_diff.to(device)
-  pos_x = pos_x.to(device); pos_y = pos_y.to(device);
+  time_diff=time_diff.to(device);  y_target = userType.to(device)
+  pos_x=pos_x.to(device);          pos_y=pos_y.to(device);
   assert terminate_idx[0]==max_sample_len_eval
-  userType = userType.to(device)
-  y_target = userType   
-  # assert tc.all(terminate_idx == max_sample_len_eval).cpu()
-  pos_x2 = tc.zeros_like(pos_x)  
-  pos_y2 = tc.zeros_like(pos_y)  
-  time_diff2 = tc.zeros_like(time_diff)  
-  ii = 0   
-  max_conf = 0
-  while ii<max_sample_len_eval and max_conf<conf_thres_hold:
-    #**  request more data if the confi
-    pos_x2[0,ii] = pos_x[0,ii]
-    pos_y2[0,ii] = pos_y[0,ii]
-    time_diff2[0,ii] = time_diff[0,ii] 
-    y_hat = model(time_diff2,pos_x2,pos_y2,terminate_idx)
+  for conf_i,conf_thres in enumerate(conf_thres_list):
+    max_conf = 0;
+    n_to_detect = 0;   
+    pos_x2=tc.zeros_like(pos_x);pos_y2=tc.zeros_like(pos_y);time_diff2=tc.zeros_like(time_diff) 
+    
+    #todo   sometimes use gen_xyt  some times use posx2?   no   just use gen_xyt directly   
+    #todo  compare len, datatype between pos_x2 and gen_xyt   
+    gen_xyt = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k)
+    print(gen_xyt)
+    bs,bl = gen_xyt.shape 
+    gen_xyt = gen_xyt.reshape(bs,-1,3)   
     breakpoint()
-    conf_y_hat = tc.softmax(y_hat,dim=1)
-    max_conf = conf_y_hat.max(dim=1)[0]
-    ii += 1   
-    # breakpoint()
-    # print(ii,"max_conf",max_conf)
-  # breakpoint()
-  _, predictions = y_hat.max(1)
-  ii = ii-1
-  if not (ii in n_correct_dict):
-    n_correct_dict[ii] = 0.
-  if not (ii in n_sample_dict):
-    n_sample_dict[ii] = 0.
-  n_correct_dict[ii] +=  (predictions == y_target).sum().cpu().item() 
-  n_sample_dict[ii] +=  predictions.size(0)
-  num_correct += (predictions == y_target).sum();
-  num_samples += predictions.size(0)
+    while n_to_detect<max_sample_len_eval and max_conf<conf_thres:
+      #**  request more data if conf is lower then threshold
+      pos_x2[0,n_to_detect] = pos_x[0,n_to_detect]
+      pos_y2[0,n_to_detect] = pos_y[0,n_to_detect]
+      time_diff2[0,n_to_detect] = time_diff[0,n_to_detect] 
+      y_hat = model(time_diff2,pos_x2,pos_y2,terminate_idx)
+      conf_y_hat = tc.softmax(y_hat,dim=1)
+      max_conf = conf_y_hat.max(dim=1)[0]
+      n_to_detect += 1   
+      # breakpoint()
+      # print(ii,"max_conf",max_conf)
+    _, predictions = y_hat.max(1)
+    n_correct = (predictions == y_target).sum();
+    n_sample  = predictions.size(0)  #*1
+    n_to_detect_list[conf_i] += n_to_detect
+    conf_n_correct_list[conf_i] += n_correct
+    conf_tot_n_samples_list[conf_i] += n_sample
+    tot_num_correct += n_correct
+    tot_num_samples += n_sample
   test_i+=1
   print(f"{test_i}/{eval_len}___")
+
+n_to_detect_list /= eval_len
+assert tot_num_samples == (test_i * bs_eval *len(conf_thres_list)) == eval_len*len(conf_thres_list)
+print(f"Accuracy on test set: {tot_num_correct/tot_num_samples*100:.2f}")
+accu_list = conf_n_correct_list/conf_tot_n_samples_list
+# breakpoint()
+fig, ax = plt.subplots(1,1,figsize=(8,8))
+fig.suptitle('Bits and bots', fontsize=20)
+title = "Unimodal_Classification"
+ax.set_title(title,fontsize=23)
+ax.set_ylabel('probability of correct classification',fontsize =18)
+ax.set_xlabel('number of events to detection',fontsize =18)
+ax.set_ylim([0, 1])
+plt.yticks(np.arange(0, 1+0.05, 0.05))
+plt.grid(True)
+ax.scatter(n_to_detect_list,accu_list,label="accuracy")
+plt.tight_layout() 
+plt.savefig(f"{title}_{training_len=}.png")
+plt.show()
+fig, ax = plt.subplots(1,1,figsize=(8,8))
+fig.suptitle('Bits and bots', fontsize=20)
+title = "Unimodal_Classification"
+ax.set_title(title,fontsize=23)
+ax.set_ylabel('probability of correct classification',fontsize =18)
+ax.set_xlabel('threshold',fontsize =18)
+ax.plot( conf_thres_list,accu_list)
+plt.tight_layout() 
+plt.savefig(f"{title}_{training_len=}_thres_correct.png")
+plt.show()
+fig, ax = plt.subplots(1,1,figsize=(8,8))
+fig.suptitle('Bits and bots', fontsize=20)
+title = "Unimodal_Classification"
+ax.set_title(title,fontsize=23)
+ax.set_ylabel('number of events to detection',fontsize =18)
+ax.set_xlabel('threshold',fontsize =18)
+ax.plot( conf_thres_list,n_to_detect_list)
+plt.tight_layout() 
+plt.savefig(f"{title}_{training_len=}_thres_n_to_detect.png")
+plt.show()
+avg_length = np.mean(n_to_detect_list)
+print("avg_length",avg_length)
+breakpoint()
+
+
+
