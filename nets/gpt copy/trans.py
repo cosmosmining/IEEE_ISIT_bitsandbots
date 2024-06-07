@@ -25,7 +25,7 @@ class CausalSelfAttention(nn.Module):
     # causal mask to ensure that attn is only applied to left in input seq
     self.register_buffer("bias", tc.tril(tc.ones(c.block_size, c.block_size))
                                 .view(1, 1, c.block_size, c.block_size))
-  def forward(self, x,visible_end):
+  def forward(self, x):
     B, T, C = x.size() # batch size, sequence length, embedding dimensionality (n_embd)
     # calculate query, key, values for all heads in batch and move head forward to be the batch dim
     q, k, v  = self.c_attn(x).split(self.n_embd, dim=2)
@@ -34,14 +34,7 @@ class CausalSelfAttention(nn.Module):
     v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
     # causal self-attention; Self-attend: (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)
     att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
-    att_raw = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf'))
-    
-    att_raw[tc.arange(B),:,:,visible_end[0]] = att[tc.arange(B),:,:,visible_end[0]]
-    att_raw[tc.arange(B),:,:,visible_end[1]] = att[tc.arange(B),:,:,visible_end[1]]
-    att_raw[tc.arange(B),:,:,visible_end[2]] = att[tc.arange(B),:,:,visible_end[2]]
-    att = att_raw    #att (128,n_head=6,209,209)   vis_end.max(208)
-    #todo
-    # breakpoint()
+    att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf'))
     att = F.softmax(att, dim=-1)
     att = self.attn_dropout(att)
     y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
@@ -71,7 +64,7 @@ class Block(nn.Module):
     self.attn = CausalSelfAttention(c)
     self.ln_2 = LayerNorm(c.n_embd, bias=c.bias)
     self.mlp = MLP(c)
-  def forward(self, x,visible_end):
-    x = x + self.attn(self.ln_1(x),visible_end)
+  def forward(self, x):
+    x = x + self.attn(self.ln_1(x))
     x = x + self.mlp(self.ln_2(x))
     return x

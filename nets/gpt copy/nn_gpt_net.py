@@ -27,38 +27,40 @@ class GPT(nn.Module):
     device = idx.device
     b, t = idx.size() #*idx [bs,sentence_len=block_len]#*ex if prompt = "hello",then block len = 5
     assert t <= self.c.block_size, f"cant forward seq of len {t}, block size is only {self.c.block_size}"
-    
+    '''
     if terminate_index != None:
-      term_idx = (terminate_index*3)
+      term_idx = (terminate_index*3).reshape(1,-1)
       # assert tc.all(term_idx>=3)
-      # print(idx[tc.arange(b),term_idx-2])
+      print(idx[tc.arange(b),term_idx])
       # idx[0]
       # idx[0,term_idx[0]]  #nothing
       # idx[0,term_idx[0]-1]  #t=0
       # idx[0,term_idx[0]-2]  #y=971
       # idx[0,term_idx[0]-3]  #x=383
-      # print(targets[tc.arange(b),term_idx-2])
+      print(targets[tc.arange(b),term_idx])
       # targets[0]
+      # targets[0,term_idx[0]]  #nothing
       # targets[0,term_idx[0]-1]  #nothing
       # targets[0,term_idx[0]-2]  #t=0
       # targets[0,term_idx[0]-3]  #y=971
-      term_idx = term_idx.reshape(1,-1)
       visible_end = tc.cat((term_idx-3,term_idx-2,term_idx-1))    
-      max_end = visible_end.max()
-      assert max_end <= idx.shape[1]
-      if max_end == idx.shape[1]:
-        visible_end = tc.where(visible_end==max_end,max_end-1,visible_end)
+    '''
     pos = tc.arange(0, t, dtype=tc.long, device=device) # shape (t)  #*pos =[0]
     # pos = [1,2,3,...,sentence_len] for pos embed
     tok_emb = self.wte(idx) # token embed (b,t)->(b, t, n_embd)
     pos_emb = self.wpe(pos) # pos embed     (t)->   (t, n_embd)
     x = self.drop(tok_emb + pos_emb) # x(b,t,n_embd)
     for block in self.h:
-      x = block(x,visible_end)
+      x = block(x)
     x = self.ln_f(x)  
-    logits = self.lm_head(x)#(b,t,n_embd=384)->(b,t,vocab_size=65)
     if targets is not None:  # if we are given some desired targets also calculate the loss
+      logits = self.lm_head(x)#(b,t,n_embd=384)->(b,t,vocab_size=65)
+      
       loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.reshape(-1), ignore_index=-1)
-    else:
+    else:  #* in self.generate
+      # inference-time mini-optimization: only forward lm_head on very last position
+      logits = self.lm_head(x[:, [-1], :]) # using list [-1] to preserve the time dim
+      #* x(b,t,n_embd) -> (b,1,b_embd)->(b,1,vocab_size)
       loss = None
+    # breakpoint()
     return logits, loss
