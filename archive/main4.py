@@ -15,7 +15,7 @@ max_sample_len_train = 70
 min_sample_len_train = 1
 
 max_sample_len_eval = 70  #*70
-training_len  = 1000 #* 1000
+training_len  = 100 #* 1000
 eval_len = 10*128
 bs = 128
 bs_eval = 1
@@ -32,14 +32,13 @@ eval_dataset  = ISITDataset(df_dict_eval,training_len=eval_len*bs_eval,
                             max_sample_len=max_sample_len_eval)
 train_dataloader = DataLoader(train_dataset, batch_size=bs, shuffle=True)
 eval_dataloader = DataLoader(eval_dataset, batch_size=bs_eval, shuffle=True)
-
+idx = 0
 category = len(train_dataset.idx_2_name)  #5 #['hlisa_traces', 'gremlins', 'za_proxy', 'survey_desktop', 'random_mouse_with_sleep_bot']
 model = NeuralNetwork(max_len=max_sample_len_train,
                       output_size=category).to(device)
 criterion = nn.CrossEntropyLoss()  # sigma [ y log(y_hat) ]
 learning_rate = 0.01
 optimizer = tc.optim.Adam(model.parameters(),lr=learning_rate)
-train_i = 0
 if load_from_checkpoint == False:
   for batch in train_dataloader:
     # for task A. Defense Task,  only the time_diff and position [x,y] elements recorded for each event can be used as input to classifier  
@@ -57,58 +56,73 @@ if load_from_checkpoint == False:
     optimizer.zero_grad() 
     loss.backward()
     optimizer.step()
-    train_i+=1
-    print(f"{train_i}/{training_len}, term_idx {terminate_idx[0].item()}, {loss.item()=}")
+    idx+=1
+    print(f"{idx}/{training_len}, term_idx {terminate_idx[0].item()}, {loss.item()=}")
     assert min_sample_len_train<=terminate_idx[0].item()<=max_sample_len_train
   tc.save({'state_dict':model.state_dict()},ckpt_path)
 else:
   checkpoint = tc.load(ckpt_path)
   model.load_state_dict(checkpoint['state_dict'])
-
-thres_num = 10
-conf_thres_list = np.linspace(0,1,thres_num+1)[1:-1]
-#*  [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-tot_num_correct = 0; tot_num_samples = 0
+num_correct = 0; num_samples = 0
 test_i = 0
-conf_n_correct_list      = np.zeros(len(conf_thres_list))
-conf_tot_n_samples_list  = np.zeros(len(conf_thres_list))
-n_to_detect_list       = np.zeros(len(conf_thres_list))
+conf_thres_hold = 0.5
+n_correct_dict = {}
+n_sample_dict = {}
+#todo   the official example is using avg event with difference threshold   
 for batch in eval_dataloader:
   _, time_diff, pos_x, pos_y, _,terminate_idx, userType = batch
-  time_diff=time_diff.to(device);  y_target = userType.to(device)
-  pos_x=pos_x.to(device);          pos_y=pos_y.to(device);
+  ##time_diff() pos_x (128,70)=(bs,n_of_events)
+  time_diff = time_diff.to(device)
+  pos_x = pos_x.to(device); pos_y = pos_y.to(device);
   assert terminate_idx[0]==max_sample_len_eval
-  for conf_i,conf_thres in enumerate(conf_thres_list):
-    max_conf = 0;
-    n_to_detect = 0;   
-    pos_x2=tc.zeros_like(pos_x);pos_y2=tc.zeros_like(pos_y);time_diff2=tc.zeros_like(time_diff)  
-    while n_to_detect<max_sample_len_eval and max_conf<conf_thres:
-      #**  request more data if conf is lower then threshold
-      pos_x2[0,n_to_detect] = pos_x[0,n_to_detect]
-      pos_y2[0,n_to_detect] = pos_y[0,n_to_detect]
-      time_diff2[0,n_to_detect] = time_diff[0,n_to_detect] 
-      y_hat = model(time_diff2,pos_x2,pos_y2,terminate_idx)
-      conf_y_hat = tc.softmax(y_hat,dim=1)
-      max_conf = conf_y_hat.max(dim=1)[0]
-      n_to_detect += 1   
-      # breakpoint()
-      # print(ii,"max_conf",max_conf)
-    _, predictions = y_hat.max(1)
-    n_correct = (predictions == y_target).sum();
-    n_sample  = predictions.size(0)  #*1
-    n_to_detect_list[conf_i] += n_to_detect
-    conf_n_correct_list[conf_i] += n_correct
-    conf_tot_n_samples_list[conf_i] += n_sample
-    tot_num_correct += n_correct
-    tot_num_samples += n_sample
+  userType = userType.to(device)
+  y_target = userType   
+  # assert tc.all(terminate_idx == max_sample_len_eval).cpu()
+  pos_x2 = tc.zeros_like(pos_x)  
+  pos_y2 = tc.zeros_like(pos_y)  
+  time_diff2 = tc.zeros_like(time_diff)  
+  ii = 0   
+  max_conf = 0
+  while ii<max_sample_len_eval and max_conf<conf_thres_hold:
+    #**  request more data if the confi
+    pos_x2[0,ii] = pos_x[0,ii]
+    pos_y2[0,ii] = pos_y[0,ii]
+    time_diff2[0,ii] = time_diff[0,ii] 
+    y_hat = model(time_diff2,pos_x2,pos_y2,terminate_idx)
+    conf_y_hat = tc.softmax(y_hat,dim=1)
+    max_conf = conf_y_hat.max(dim=1)[0]
+    ii += 1   
+    # breakpoint()
+    # print(ii,"max_conf",max_conf)
+  # breakpoint()
+  _, predictions = y_hat.max(1)
+  ii = ii-1
+  if not (ii in n_correct_dict):
+    n_correct_dict[ii] = 0.
+  if not (ii in n_sample_dict):
+    n_sample_dict[ii] = 0.
+  n_correct_dict[ii] +=  (predictions == y_target).sum().cpu().item() 
+  n_sample_dict[ii] +=  predictions.size(0)
+  num_correct += (predictions == y_target).sum();
+  num_samples += predictions.size(0)
   test_i+=1
   print(f"{test_i}/{eval_len}___")
+assert num_samples == test_i * bs_eval
+n_correct_dict = dict(sorted(n_correct_dict.items()))
+n_sample_dict = dict(sorted(n_sample_dict.items()))
+assert np.all([*n_correct_dict]==[*n_sample_dict])
+for k in n_correct_dict.keys():
+  n_correct_dict[k]/=n_sample_dict[k] * bs_eval
+print(f"Accuracy on test set: {num_correct/num_samples*100:.2f}")
+aaa = [*n_sample_dict.values()]
 
-n_to_detect_list /= eval_len
-assert tot_num_samples == (test_i * bs_eval *len(conf_thres_list)) == eval_len*len(conf_thres_list)
-print(f"Accuracy on test set: {tot_num_correct/tot_num_samples*100:.2f}")
-accu_list = conf_n_correct_list/conf_tot_n_samples_list
-# breakpoint()
+least_sample_num = 20
+n_sample_dict_eval = n_sample_dict.copy()
+n_correct_dict_eval = n_correct_dict.copy()
+for k in n_correct_dict.keys():
+  if n_sample_dict[k] < least_sample_num: 
+     del n_sample_dict_eval[k]
+     del n_correct_dict_eval[k]
 fig, ax = plt.subplots(1,1,figsize=(8,8))
 fig.suptitle('Bits and bots', fontsize=20)
 title = "Unimodal_Classification"
@@ -118,31 +132,24 @@ ax.set_xlabel('number of events to detection',fontsize =18)
 ax.set_ylim([0, 1])
 plt.yticks(np.arange(0, 1+0.05, 0.05))
 plt.grid(True)
-ax.scatter(n_to_detect_list,accu_list,label="accuracy")
+ax.plot( [*n_correct_dict_eval],[*n_correct_dict_eval.values()],'r',label="accuracy")
 plt.tight_layout() 
-plt.savefig(f"{title}_{training_len=}.png")
+plt.savefig(f"result_{title}_{training_len=}.png")
 plt.show()
 fig, ax = plt.subplots(1,1,figsize=(8,8))
 fig.suptitle('Bits and bots', fontsize=20)
 title = "Unimodal_Classification"
 ax.set_title(title,fontsize=23)
-ax.set_ylabel('probability of correct classification',fontsize =18)
-ax.set_xlabel('threshold',fontsize =18)
-ax.plot( conf_thres_list,accu_list)
+ax.set_ylabel('length for classification',fontsize =18)
+ax.set_xlabel('number of events to detection',fontsize =18)
+ax.plot( [*n_sample_dict],[*n_sample_dict.values()])
 plt.tight_layout() 
-plt.savefig(f"{title}_{training_len=}_thres_correct.png")
+plt.savefig(f"result_{title}_{training_len=}_sample_len.png")
 plt.show()
-fig, ax = plt.subplots(1,1,figsize=(8,8))
-fig.suptitle('Bits and bots', fontsize=20)
-title = "Unimodal_Classification"
-ax.set_title(title,fontsize=23)
-ax.set_ylabel('number of events to detection',fontsize =18)
-ax.set_xlabel('threshold',fontsize =18)
-ax.plot( conf_thres_list,n_to_detect_list)
-plt.tight_layout() 
-plt.savefig(f"{title}_{training_len=}_thres_n_to_detect.png")
-plt.show()
-avg_length = np.mean(n_to_detect_list)
+detect_lengths = np.array([*n_sample_dict])   
+detect_length_num = np.array([*n_sample_dict.values()])
+detect_length_rate = detect_length_num/np.sum(detect_length_num)  
+avg_length = detect_lengths@detect_length_rate.T
 print("avg_length",avg_length)
 breakpoint()
 

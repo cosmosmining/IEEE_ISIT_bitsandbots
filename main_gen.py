@@ -1,13 +1,10 @@
 import torch as tc
-import matplotlib.pyplot as plt
-from torch import nn
 from torch.utils.data import DataLoader
-import numpy as np
 from data_set_.data_loader_ import ISITDataset_gen,make_df_from_data_dir
 from config import GPTConfig   
 from nets.gpt.nn_gpt_net import GPT
 from nets.gpt.utils import configure_optimizers,Discretizer   
-
+import os
 from contextlib import nullcontext
 device = tc.device("cuda" if tc.cuda.is_available() else "cpu")
 gpt_conf = GPTConfig()
@@ -44,7 +41,11 @@ training_len  = 1000
 eval_len = 10
 bs = 128
 load_from_checkpoint = True
+
 ckpt_path = 'gpt.ckpt'
+if not os.path.isfile(ckpt_path):
+  print("cant file ckpt path, train from scratch")
+  load_from_checkpoint = False 
 train_dataset = ISITDataset_gen(df_dict_train,training_len=training_len*bs,
                             min_sample_len=min_sample_len_train,
                             max_sample_len=max_sample_len_train)   
