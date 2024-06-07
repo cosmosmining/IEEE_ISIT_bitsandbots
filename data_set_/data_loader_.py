@@ -110,6 +110,8 @@ class ISITDataset(Dataset):
     eventName[tc.arange(self.max_sample_len),eventName_idx] = 1
     for user_t in sample['userType']: assert  user_t == name
     userType = tc.tensor(data_type_idx,dtype= tc.int64)  #cross entropy must be long not int
+    if name == 'survey_desktop':
+      assert userType == 3
     return userId, time_diff, x, y, eventName,terminate_idx, userType
   #           [x0,        x1, x2,x3, x4]          y
 
