@@ -4,7 +4,7 @@ from torch.utils.data import DataLoader
 from data_set_.data_loader_ import ISITDataset_gen,make_df_from_data_dir
 from config import GPTConfig   
 from nets.gpt.nn_gpt_net import GPT
-from nets.gpt.utils import configure_optimizers,Discretizer_old   
+from nets.gpt.utils import configure_optimizers,Discretizer   
 import matplotlib.pyplot as plt
 import numpy as np
 from contextlib import nullcontext
@@ -27,11 +27,11 @@ for k in df_dict_all.keys():
 vocab_size = max(max_xxx,max_yyy)+1  #todo
 gpt_conf.vocab_size = vocab_size
 # np.sort(df_dict_all['survey_desktop']['time_diff'].to_numpy()
-disc = Discretizer_old(max_ttt,vocab_size)
+disc = Discretizer(max_ttt,vocab_size)
 # Use Training set for ISIT2024
 max_sample_len_train = 70
 min_sample_len_train = 3
-training_len  =1000#600#* 1000  
+training_len  =1000# 200#* 1000  
 eval_len = 10
 bs = 128
 load_from_checkpoint = True
@@ -71,7 +71,7 @@ if load_from_checkpoint == False:
     yy = pos_xyt[:,1:blocksize+1]
     assert xx.shape[0]==bs and xx.shape[1]==blocksize and yy.shape[0]==bs and yy.shape[1]==blocksize
     assert xx.max()<vocab_size and yy.max()<vocab_size
-    _,loss = model(xx,yy,terminate_idx)
+    _,loss = model(xx,yy,terminate_idx)#,terminate_idx)
     optim.zero_grad() 
     loss.backward()
     optim.step()
@@ -115,7 +115,7 @@ def generate(model_, idx, end_idx_, temperature=1.0, top_k=None):
   for ii in range(2,end_idx_-1):
     # if seq context grow too long we must crop it at block_size
     idx_cond = idx 
-    logits, _ = model_(idx_cond,None,terminate_index=tc.tensor([(end_idx_+3)//3],dtype=tc.int64)) 
+    logits, _ = model_(idx_cond,idx_cond) 
     logits = logits[:,[ii],:]
     logits = logits[:, -1, :] / temperature# pluck logits at final step and scale by desired temperature
     if top_k is not None:# optionally crop the logits to only the top k options
@@ -138,7 +138,6 @@ with tc.no_grad():
       bs,bl = gen_xyt.shape 
       gen_xyt = gen_xyt.reshape(bs,-1,3)  
       print('---------------')
-
 from nets.nn_net import NeuralNetwork
 from data_set_.data_loader_ import ISITDataset
 max_sample_len_eval = 70  #*70
@@ -197,7 +196,8 @@ for batch in eval_dataloader:
   ini_xyt[0,end_idx+1] = pos_y[0,end_idx_raw] #y
   ini_xyt[0,end_idx+2] = time_diff[0,end_idx_raw]    #t
   # gen_xyt = model.generate(start_xyt, max_new_tokens, temperature=temperature, top_k=top_k)
-  gen_xyt = generate(model,tc.clone(ini_xyt),end_idx, temperature=temperature, top_k=top_k)
+  gen_xyt = generate(model,ini_xyt,end_idx, temperature=temperature, top_k=top_k)
+  
   bs,bl = gen_xyt.shape 
   gen_xyt = gen_xyt.reshape(bs,-1,3)   
   pos_x_gen = gen_xyt[:,:,0].to(tc.float32)[:,:blocksize_mlp]

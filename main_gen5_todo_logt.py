@@ -31,7 +31,7 @@ disc = Discretizer(max_ttt,vocab_size)
 # Use Training set for ISIT2024
 max_sample_len_train = 70
 min_sample_len_train = 3
-training_len  =600#600#* 1000  
+training_len  =1000#600#* 1000  
 eval_len = 10
 bs = 128
 load_from_checkpoint = True
@@ -63,9 +63,8 @@ if load_from_checkpoint == False:
     #* pos_x,pos_y(bs=128,n_of_events=70),terminate_idx(bs=128),userType(bs=128)
     time_diff_token = disc.cont_2_token(time_diff).to(dtype=tc.float32)  #todo use log for small numbers
     pos_xyt = tc.stack((pos_x,pos_y,time_diff_token),dim=-1).reshape(bs,-1)  #(bs=128,n_of_events*2 = 140)
-    if tc.any(time_diff_token>0):
-      print(time_diff_token[time_diff_token>0])  #todo  use log at discretizer
-    assert  (pos_xyt.max()<=vocab_size) and (pos_xyt.min()>=0) and (time_diff.max()<= max_ttt)
+    assert  (pos_xyt.max()<=vocab_size) and (pos_xyt.min()>=0) and (time_diff.max()<= max_ttt) 
+    assert time_diff_token.max()<=vocab_size and time_diff_token.min()>=0
     pos_xyt = pos_xyt.to(device=device,dtype=tc.int64)  #* (bs=128,len=140)
     xx = pos_xyt[:,:blocksize]
     yy = pos_xyt[:,1:blocksize+1]
@@ -76,7 +75,6 @@ if load_from_checkpoint == False:
     loss.backward()
     optim.step()
     idx+=1
-    # breakpoint()
     print(f"{idx}/{training_len}, term_idx {terminate_idx[0].item()}, {loss.item()=}")
     assert min_sample_len_train<=terminate_idx[0].item()<=max_sample_len_train
   tc.save({'state_dict':model.state_dict()},ckpt_path)
@@ -138,7 +136,7 @@ with tc.no_grad():
       bs,bl = gen_xyt.shape 
       gen_xyt = gen_xyt.reshape(bs,-1,3)  
       print('---------------')
-breakpoint()
+
 from nets.nn_net import NeuralNetwork
 from data_set_.data_loader_ import ISITDataset
 max_sample_len_eval = 70  #*70
@@ -197,8 +195,7 @@ for batch in eval_dataloader:
   ini_xyt[0,end_idx+1] = pos_y[0,end_idx_raw] #y
   ini_xyt[0,end_idx+2] = time_diff[0,end_idx_raw]    #t
   # gen_xyt = model.generate(start_xyt, max_new_tokens, temperature=temperature, top_k=top_k)
-  gen_xyt = generate(model,ini_xyt,end_idx, temperature=temperature, top_k=top_k)
-  
+  gen_xyt = generate(model,tc.clone(ini_xyt),end_idx, temperature=temperature, top_k=top_k)
   bs,bl = gen_xyt.shape 
   gen_xyt = gen_xyt.reshape(bs,-1,3)   
   pos_x_gen = gen_xyt[:,:,0].to(tc.float32)[:,:blocksize_mlp]
@@ -210,13 +207,16 @@ for batch in eval_dataloader:
     max_conf = 0;
     n_to_detect = 0;   
     pos_x2=tc.zeros_like(pos_x_gen);
-    pos_y2=tc.zeros_like(pos_y_gen);time_diff2=tc.zeros_like(time_diff_gen)  
+    pos_y2=tc.zeros_like(pos_y_gen);time_diff2=tc.zeros_like(time_diff_gen) 
+    time_diff2 = time_diff2.to(tc.float32) 
     while n_to_detect<max_sample_len_eval and max_conf<conf_thres:
       #**  request more data if conf is lower then threshold
       pos_x2[0,n_to_detect] = pos_x_gen[0,n_to_detect]
       pos_y2[0,n_to_detect] = pos_y_gen[0,n_to_detect]
       time_diff2[0,n_to_detect] = time_diff_gen[0,n_to_detect] 
+      # breakpoint()
       y_hat = model_mlp(time_diff2,pos_x2,pos_y2,terminate_idx)
+      # breakpoint()
       conf_y_hat = tc.softmax(y_hat,dim=1)
       max_conf = conf_y_hat.max(dim=1)[0]
       n_to_detect += 1   
