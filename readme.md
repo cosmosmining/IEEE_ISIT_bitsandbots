@@ -31,5 +31,5 @@ python main.py
 第二題  offense   
 需要跑過第一題， 產生過model.ckpt 之後才可以跑第二題    
 ```sh
-python main.py
+python main_gen.py
 ```
