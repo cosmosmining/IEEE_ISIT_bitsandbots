@@ -106,13 +106,13 @@ class ISITDataset(Dataset):
       eventName_idx[idx] = self.event_names.index(event)  #todo accelerate
     assert self.max_sample_len == x.shape[0] == y.shape[0] == userId.shape[0] == time_diff.shape[0] #bs
     assert terminate_idx == len(x_raw) == len(y_raw) == len(userId_raw) == len(time_diff_raw) == len(sample['eventName'])
-    eventName = tc.zeros((self.max_sample_len,len(self.event_names)), dtype=tc.int32)
-    eventName[tc.arange(self.max_sample_len),eventName_idx] = 1
+    
+    eventName_idx = eventName_idx.to(tc.float32)
     for user_t in sample['userType']: assert  user_t == name
     userType = tc.tensor(data_type_idx,dtype= tc.int64)  #cross entropy must be long not int
     if name == 'survey_desktop':
       assert userType == 3
-    return userId, time_diff, x, y, eventName,terminate_idx, userType
+    return userId, time_diff, x, y, eventName_idx,terminate_idx, userType
   #           [x0,        x1, x2,x3, x4]          y
 
 class ISITDataset_gen(Dataset):
