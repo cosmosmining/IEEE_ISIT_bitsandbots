@@ -147,7 +147,6 @@ plt.savefig(f"{title}_{training_len=}_thres_n_to_detect.png")
 plt.show()
 avg_length = np.mean(n_to_detect_list)
 print("avg_length",avg_length)
-breakpoint()
 
 
 
