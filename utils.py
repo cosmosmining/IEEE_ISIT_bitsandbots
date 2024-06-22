@@ -19,7 +19,6 @@ def mul_copy_idx(v1list,v2list,idx):
 def plot_accu(x,y,title,save_path):
   fig, ax = plt.subplots(1,1,figsize=(8,8))
   fig.suptitle('Bits and bots', fontsize=20)
-  title = "Unimodal_Classification"
   ax.set_title(title,fontsize=23)
   ax.set_ylabel('probability of correct classification',fontsize =18)
   ax.set_xlabel('number of events to detection',fontsize =18)
