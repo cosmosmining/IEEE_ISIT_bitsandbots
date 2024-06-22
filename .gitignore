@@ -2,3 +2,4 @@ data/**
 myver/** 
 # model.ckpt
 **.ckpt
+private/** 

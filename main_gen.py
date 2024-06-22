@@ -248,7 +248,7 @@ plt.yticks(np.arange(0, 1+0.05, 0.05))
 plt.grid(True)
 ax.scatter(n_to_detect_list,accu_list,label="accuracy")
 plt.tight_layout() 
-plt.savefig(f"offenseTask_{training_len=}.png")
+plt.savefig(f"./img/offenseTask_{training_len=}.png")
 plt.show()
 
 breakpoint()

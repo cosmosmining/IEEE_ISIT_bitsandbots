@@ -156,8 +156,6 @@ ax.set_ylim([0, 1])
 plt.yticks(np.arange(0, 1+0.05, 0.05))
 plt.grid(True)
 ax.plot(n_to_detect_list,y_correct_list,'r',label="relu")
-
-
 plt.tight_layout() 
 plt.savefig(f"result_{title}_{training_len=}.png")
 plt.show()
