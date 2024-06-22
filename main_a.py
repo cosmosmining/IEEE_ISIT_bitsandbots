@@ -43,7 +43,7 @@ if load_from_checkpoint == False:
   for batch in train_dataloader:
     # for task A. Defense Task,  only the time_diff and position [x,y] elements recorded for each event can be used as input to classifier  
     _, td, px, py, _,_, userType = batch  #px:pos_x,py:pos_y,td:time_diff
-    #* pos_x.shape  [128,70] = (bs,n_of_events)
+    #* px.shape  [128,70] = (bs,n_of_events)
     td,px,py,userType = to_devices([td,px,py,userType],device)
     y_target = userType   
     y_hat = model(td,px,py)

@@ -25,7 +25,7 @@ class NeuralNetwork_b(nn.Module):
         nn.Linear(512, output_size),
     )
 
-  def forward(self, time_diff,pos_x,pos_y,eventName,terminate_idx):
+  def forward(self, time_diff,pos_x,pos_y,eventName):
     '''
     time_diff (bs,max_len) = (128,70)
     pos_x (bs,max_len)
