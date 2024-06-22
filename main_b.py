@@ -6,6 +6,7 @@ from torch.utils.data import DataLoader
 import numpy as np
 from data_set_.data_loader_ import ISITDataset,make_df_from_data_dir
 from nets.nn_net_b import NeuralNetwork_b
+from utils import to_devices,mul_zeros_likes
 device = tc.device("cuda" if tc.cuda.is_available() else "cpu")
 
 train_data_ratio = 0.8
