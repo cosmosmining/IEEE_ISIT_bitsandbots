@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader
 import numpy as np
 from data_set_.data_loader_ import ISITDataset,make_df_from_data_dir
 from nets.nn_net_b import NeuralNetwork_b
-from utils import to_devices,mul_zeros_likes
+from utils import to_devices,mul_zeros_likes,plot_accu
 
 device = tc.device("cuda" if tc.cuda.is_available() else "cpu")
 train_data_ratio = 0.8
@@ -20,6 +20,7 @@ bs = 128
 bs_eval = 1
 load_from_checkpoint = True
 ckpt_path = 'model_b.ckpt'
+print_iterval = 100
 if not os.path.isfile(ckpt_path):
   print("cant file ckpt path, train from scratch")
   load_from_checkpoint = False 
@@ -52,7 +53,7 @@ if load_from_checkpoint == False:
     loss.backward()
     optimizer.step()
     train_i+=1
-    if train_i%10 == 0:
+    if train_i%print_iterval == 0:
       print(f"{train_i}/{training_len}, {loss.item()=}")
   tc.save({'state_dict':model.state_dict()},ckpt_path)
 else:
@@ -102,21 +103,13 @@ assert tot_num_samples == (test_i * bs_eval *len(conf_thres_list)) == eval_len*l
 print(f"Accuracy on test set: {tot_num_correct/tot_num_samples*100:.2f}")
 accu_list = conf_n_correct_list/conf_tot_n_samples_list
 # breakpoint()
-fig, ax = plt.subplots(1,1,figsize=(8,8))
-fig.suptitle('Bits and bots', fontsize=20)
-title = "Multimodal_Classification"
-ax.set_title(title,fontsize=23)
-ax.set_ylabel('probability of correct classification',fontsize =18)
-ax.set_xlabel('number of events to detection',fontsize =18)
-ax.set_ylim([0, 1])
-plt.yticks(np.arange(0, 1+0.05, 0.05))
-plt.grid(True)
-ax.scatter(n_to_detect_list,accu_list,label="accuracy")
-plt.tight_layout() 
-plt.savefig(f"./img/{title}_{training_len=}.png")
-plt.show()
 avg_length = np.mean(n_to_detect_list)
 print("avg_length",avg_length)
+
+title = "Multimodal_Classification"
+save_path = f"./img/b_{title}_{training_len=}.png"
+plot_accu(n_to_detect_list,accu_list,title,save_path)
+
 
 
 
