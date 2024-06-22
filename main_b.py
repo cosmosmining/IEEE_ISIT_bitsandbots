@@ -114,7 +114,7 @@ accu_list = conf_n_correct_list/conf_tot_n_samples_list
 # breakpoint()
 fig, ax = plt.subplots(1,1,figsize=(8,8))
 fig.suptitle('Bits and bots', fontsize=20)
-title = "Unimodal_Classification"
+title = "Multimodal_Classification"
 ax.set_title(title,fontsize=23)
 ax.set_ylabel('probability of correct classification',fontsize =18)
 ax.set_xlabel('number of events to detection',fontsize =18)
@@ -127,7 +127,7 @@ plt.savefig(f"{title}_{training_len=}.png")
 plt.show()
 fig, ax = plt.subplots(1,1,figsize=(8,8))
 fig.suptitle('Bits and bots', fontsize=20)
-title = "Unimodal_Classification"
+
 ax.set_title(title,fontsize=23)
 ax.set_ylabel('probability of correct classification',fontsize =18)
 ax.set_xlabel('threshold',fontsize =18)
@@ -137,7 +137,6 @@ plt.savefig(f"{title}_{training_len=}_thres_correct.png")
 plt.show()
 fig, ax = plt.subplots(1,1,figsize=(8,8))
 fig.suptitle('Bits and bots', fontsize=20)
-title = "Unimodal_Classification"
 ax.set_title(title,fontsize=23)
 ax.set_ylabel('number of events to detection',fontsize =18)
 ax.set_xlabel('threshold',fontsize =18)
