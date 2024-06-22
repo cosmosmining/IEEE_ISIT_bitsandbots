@@ -105,8 +105,8 @@ for batch in eval_dataloader:
     tot_num_correct += n_correct
     tot_num_samples += n_sample
   test_i+=1
-  print(f"{test_i}/{eval_len}___")
-
+  print(f"\r{test_i}/{eval_len}___",end='')
+print("")
 n_to_detect_list /= eval_len
 assert tot_num_samples == (test_i * bs_eval *len(conf_thres_list)) == eval_len*len(conf_thres_list)
 print(f"Accuracy on test set: {tot_num_correct/tot_num_samples*100:.2f}")

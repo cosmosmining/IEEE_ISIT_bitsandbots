@@ -6,14 +6,12 @@ from torch.utils.data import DataLoader
 import numpy as np
 from data_set_.data_loader_ import ISITDataset,make_df_from_data_dir
 from nets.nn_net import NeuralNetwork
+from utils import to_devices
 device = tc.device("cuda" if tc.cuda.is_available() else "cpu")
-
 train_data_ratio = 0.8
 df_dict_all,df_dict_train,df_dict_eval = make_df_from_data_dir(train_data_ratio = train_data_ratio)
 # Use Training set for ISIT2024
-max_sample_len_train = 70
-min_sample_len_train = 1
-
+max_sample_len_train = 70; min_sample_len_train = 1
 max_sample_len_eval = 70  #*70
 training_len  = 1000 #* 1000
 eval_len = 10*128
@@ -46,20 +44,16 @@ if load_from_checkpoint == False:
     _, time_diff, pos_x, pos_y, _,terminate_idx, userType = batch
     # userId, time_diff, x, y, eventName, userType = batch
     #* pos_x.shape  [128,70] = (bs,n_of_events)
-    time_diff = time_diff.to(device)
-    pos_x = pos_x.to(device)
-    pos_y = pos_y.to(device)
-    terminate_idx =terminate_idx.to(device)
-    userType = userType.to(device)
+    time_diff,pos_x,pos_y,userType = to_devices([time_diff,pos_x,pos_y,userType],device)
     y_target = userType   
-    y_hat = model(time_diff,pos_x,pos_y,terminate_idx)
+    y_hat = model(time_diff,pos_x,pos_y)
     loss = criterion(y_hat, y_target)
     optimizer.zero_grad() 
     loss.backward()
     optimizer.step()
     train_i+=1
-    print(f"{train_i}/{training_len}, term_idx {terminate_idx[0].item()}, {loss.item()=}")
-    assert min_sample_len_train<=terminate_idx[0].item()<=max_sample_len_train
+    if train_i%10 == 0:
+      print(f"{train_i}/{training_len}, {loss.item()=}")
   tc.save({'state_dict':model.state_dict()},ckpt_path)
 else:
   checkpoint = tc.load(ckpt_path)
@@ -73,11 +67,11 @@ test_i = 0
 conf_n_correct_list      = np.zeros(len(conf_thres_list))
 conf_tot_n_samples_list  = np.zeros(len(conf_thres_list))
 n_to_detect_list       = np.zeros(len(conf_thres_list))
+
 for batch in eval_dataloader:
   _, time_diff, pos_x, pos_y, _,terminate_idx, userType = batch
   time_diff=time_diff.to(device);  y_target = userType.to(device)
   pos_x=pos_x.to(device);          pos_y=pos_y.to(device);
-  assert terminate_idx[0]==max_sample_len_eval
   for conf_i,conf_thres in enumerate(conf_thres_list):
     max_conf = 0;
     n_to_detect = 0;   
@@ -87,7 +81,7 @@ for batch in eval_dataloader:
       pos_x2[0,n_to_detect] = pos_x[0,n_to_detect]
       pos_y2[0,n_to_detect] = pos_y[0,n_to_detect]
       time_diff2[0,n_to_detect] = time_diff[0,n_to_detect] 
-      y_hat = model(time_diff2,pos_x2,pos_y2,terminate_idx)
+      y_hat = model(time_diff2,pos_x2,pos_y2)
       conf_y_hat = tc.softmax(y_hat,dim=1)
       max_conf = conf_y_hat.max(dim=1)[0]
       n_to_detect += 1   
@@ -102,8 +96,8 @@ for batch in eval_dataloader:
     tot_num_correct += n_correct
     tot_num_samples += n_sample
   test_i+=1
-  print(f"{test_i}/{eval_len}___")
-
+  print(f"\r{test_i}/{eval_len}___",end='')
+print("")
 n_to_detect_list /= eval_len
 assert tot_num_samples == (test_i * bs_eval *len(conf_thres_list)) == eval_len*len(conf_thres_list)
 print(f"Accuracy on test set: {tot_num_correct/tot_num_samples*100:.2f}")
@@ -142,7 +136,7 @@ plt.tight_layout()
 plt.show()
 avg_length = np.mean(n_to_detect_list)
 print("avg_length",avg_length)
-breakpoint()
+
 
 
 
