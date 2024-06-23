@@ -16,16 +16,20 @@ def mul_copy_idx(v1list,v2list,idx):
     v1list[i][0,idx] = v2[0,idx]
   return v1list
 
-def plot_accu(x,y,title,save_path):
+def plot_accu(x,y,title,save_path,
+    suptitile= "Unimodal Classification",
+    xlabel='number of events to detection',
+    ylabel='probability of correct classification',
+    ):
   fig, ax = plt.subplots(1,1,figsize=(8,8))
-  fig.suptitle('Bits and bots', fontsize=20)
-  ax.set_title(title,fontsize=23)
-  ax.set_ylabel('probability of correct classification',fontsize =18)
-  ax.set_xlabel('number of events to detection',fontsize =18)
+  fig.suptitle(suptitile, fontsize=20)
+  ax.set_title(title,fontsize=18)
+  ax.set_ylabel(ylabel,fontsize =18)
+  ax.set_xlabel(xlabel,fontsize =18)
   ax.set_ylim([0, 1])
   plt.yticks(np.arange(0, 1+0.05, 0.05))
   plt.grid(True)
-  ax.scatter(x,y,label="accuracy")
+  ax.scatter(x,y)
   plt.tight_layout() 
   plt.savefig(save_path)
   plt.show()
@@ -50,3 +54,15 @@ def plot_threshold(title,conf_thres_list,n_to_detect_list,accu_list):
   plt.tight_layout() 
   # plt.savefig(f"{title}_{training_len=}_thres_n_to_detect.png")
   plt.show()
+  '''
+  fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+  fig.suptitle('Bits and Bots', fontsize=20)
+  ax.set_title("Unimodal Classification", fontsize=23)
+  ax.set_ylabel('Number of Events to Detection', fontsize=18)
+  ax.set_xlabel('Threshold', fontsize=18)
+  ax.plot(conf_thres_list, n_to_detect_list / eval_len)
+  plt.tight_layout()
+  plt.savefig("Unimodal_Classification_threshold_events.png")
+  plt.show()
+  '''
+
